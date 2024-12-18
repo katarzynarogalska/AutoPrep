@@ -67,6 +67,15 @@ class ReportGenerator:
             self.doc.preamble.append(NoEscape(r"\author{AutoPrep}"))
             self.doc.preamble.append(NoEscape(r"\date{\today}"))
             self.doc.append(NoEscape(r"\maketitle"))
+            self.doc.append(
+                NoEscape(
+                    r"""
+                \begin{abstract}
+                This raport has been generated with AutoPrep using
+                \end{abstract}
+            """
+                )
+            )
             self.doc.append(Command("tableofcontents"))
             self.doc.append(NoEscape(r"\newpage"))
         except Exception as e:
@@ -182,6 +191,9 @@ class ReportGenerator:
         """
         try:
             logger.debug(f"Generating PDF at {output_path}")
+            self.doc.generate_pdf(
+                output_path, clean=False, clean_tex=False, compiler="pdflatex"
+            )
             self.doc.generate_pdf(output_path, clean_tex=False, compiler="pdflatex")
             logger.info("PDF generation complete")
         except Exception as e:

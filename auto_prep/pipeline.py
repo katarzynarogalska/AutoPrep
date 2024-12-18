@@ -14,6 +14,7 @@ from .preprocessing.cleaner import DataCleaner
 from .preprocessing.encoder import AdvancedEncoder
 from .reporting.latex_generator import ReportGenerator
 from .utils.logging_config import setup_logger
+from .utils.system import get_system_info
 from .visualization.eda import EDAVisualizer
 
 logger = setup_logger(__name__)
@@ -39,17 +40,20 @@ class AutoMLPipeline:
                 Defaults to "reports".
         """
         logger.info("Initializing AutoMLPipeline with output_dir: %s", output_dir)
-        self.output_dir = output_dir
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.abspath(os.path.join(".", output_dir))
+        self._output_dir = output_dir
+        self._figure_dir = os.path.join(self._output_dir, "figures")
 
         try:
-            os.makedirs(self.output_dir, exist_ok=True)
-            os.makedirs(f"{self.output_dir}/figures", exist_ok=True)
+            os.makedirs(self._output_dir, exist_ok=True)
+            os.makedirs(self._figure_dir, exist_ok=True)
             logger.debug("Created output directories")
         except Exception as e:
             logger.error("Failed to create output directories: %s", str(e))
             raise
 
-        self.visualizer = EDAVisualizer(f"{self.output_dir}/figures")
+        self.visualizer = EDAVisualizer(self._figure_dir)
         self.report_generator = ReportGenerator()
         logger.debug("Initialized components")
 
@@ -120,7 +124,7 @@ class AutoMLPipeline:
                 self._generate_feature_importance(
                     classifier,
                     X_train_transformed.columns,
-                    f"{self.output_dir}/figures/feature_importance.png",
+                    self._get_fig_path("feature_importance.png"),
                 )
 
             # Generate report
@@ -240,7 +244,7 @@ class AutoMLPipeline:
             cmap="Blues",
         )
         plt.title("Normalized Confusion Matrix")
-        plt.savefig(f"{self.output_dir}/figures/confusion_matrix.png")
+        plt.savefig(self._get_fig_path("confusion_matrix.png"))
         plt.close()
 
     def _generate_feature_importance(
@@ -295,9 +299,19 @@ class AutoMLPipeline:
         try:
             self.report_generator.add_header()
 
-            # Dataset Overview section
+            # Overview section
             overview_section = self.report_generator.add_section(
-                "Dataset Overview"
+                "Overview"
+            )  # noqa: F841
+            system_subsection = self.report_generator.add_subsection(
+                "System"
+            )  # noqa: F841
+            self._dict_to_latex_table(
+                get_system_info(),
+                header=None,
+            )
+            dataset_subsection = self.report_generator.add_subsection(
+                "Dataset"
             )  # noqa: F841
             self._dict_to_latex_table(
                 {
@@ -318,7 +332,8 @@ class AutoMLPipeline:
             )
             # Add target distribution plot
             self.report_generator.add_figure(
-                "figures/target_distribution.png", "Target Variable Distribution"
+                self._get_fig_path("target_distribution.png"),
+                "Target Variable Distribution",
             )
 
             # Add Missing Values subsection
@@ -330,7 +345,7 @@ class AutoMLPipeline:
                     self.dataset_summary["missing_values"], "Missing Values"
                 )
                 self.report_generator.add_figure(
-                    "figures/missing_values.png", "Missing Values Analysis"
+                    self._get_fig_path("missing_values.png"), "Missing Values Analysis"
                 )
 
             # Add EDA section
@@ -345,7 +360,8 @@ class AutoMLPipeline:
             # Add distribution plots for numeric features
             for feature in self.dataset_summary["numeric_features"]:
                 self.report_generator.add_figure(
-                    f"figures/dist_{feature}.png", f"Distribution of {feature}"
+                    self._get_fig_path(f"dist_{feature}.png"),
+                    f"Distribution of {feature}",
                 )
 
             # Add Categorical Features subsection
@@ -355,7 +371,8 @@ class AutoMLPipeline:
             # Add bar plots for categorical features
             for feature in self.dataset_summary["categorical_features"]:
                 self.report_generator.add_figure(
-                    f"figures/cat_{feature}.png", f"Distribution of {feature}"
+                    self._get_fig_path(f"cat_{feature}.png"),
+                    f"Distribution of {feature}",
                 )
 
             # Add Correlation Analysis subsection
@@ -363,10 +380,12 @@ class AutoMLPipeline:
                 "Correlation Analysis"
             )  # noqa: F841
             self.report_generator.add_figure(
-                "figures/correlation_matrix.png", "Feature Correlation Matrix"
+                self._get_fig_path("correlation_matrix.png"),
+                "Feature Correlation Matrix",
             )
             self.report_generator.add_figure(
-                "figures/target_correlations.png", "Feature Correlations with Target"
+                self._get_fig_path("target_correlations.png"),
+                "Feature Correlations with Target",
             )
 
             # Add Model Performance section
@@ -396,7 +415,8 @@ class AutoMLPipeline:
                 "Confusion Matrix"
             )  # noqa: F841
             self.report_generator.add_figure(
-                "figures/confusion_matrix.png", "Normalized Confusion Matrix"
+                self._get_fig_path("confusion_matrix.png"),
+                "Normalized Confusion Matrix",
             )
 
             # Add Feature Importance section if available
@@ -408,12 +428,13 @@ class AutoMLPipeline:
                     "Analysis of feature importance in the model."
                 )
                 self.report_generator.add_figure(
-                    "figures/feature_importance.png", "Feature Importance Rankings"
+                    self._get_fig_path("feature_importance.png"),
+                    "Feature Importance Rankings",
                 )
 
             # Generate final PDF
             logger.info("Generating final PDF report")
-            self.report_generator.generate(f"{self.output_dir}/analysis_report")
+            self.report_generator.generate(f"{self._output_dir}/analysis_report")
             logger.info("Report generation complete")
 
         except Exception as e:
@@ -434,3 +455,12 @@ class AutoMLPipeline:
             str: Formatted report.
         """
         self.report_generator.add_verbatim(report)
+
+    def _get_fig_path(self, name: str) -> str:
+        """
+        Returns formatted figure path.
+
+        Args:
+            name (str): figure name that will be added to `obj`:`self._figure_dir`
+        """
+        return os.path.join(self._figure_dir, name)
